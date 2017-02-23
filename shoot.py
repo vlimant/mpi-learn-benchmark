@@ -72,6 +72,7 @@ sub_masters = options.sub_masters
 cpu = options.cpu
 max_round = options.max_round
 rounds = 0
+pwd = os.getenv('PWD')
 
 for nw,ba,ep,v in tests:
     if max_round>0 and rounds>max_round:
@@ -110,7 +111,7 @@ for nw,ba,ep,v in tests:
         print "\t\t",label,"already processed"
     else:
         print "Starting",label
-        command = './MPIDriver.py dannynet train_dustin.list test_dustin.list --features-name X --labels-name Y --epochs %d --loss categorical_crossentropy --batch %d --trial-name %s --master-gpu'%( ep, ba, label)
+        command = './MPIDriver.py dannynet_arch.json train_dustin.list test_dustin.list --features-name X --labels-name Y --epochs %d --loss categorical_crossentropy --batch %d --trial-name %s --master-gpu'%( ep, ba, label)
         if v!=1: command+=' --validate-fraction-every %s'% v #command+=' --validate-every 0 '
         if nn == 1: command += ' --master-only '
         if n_sub_masters: command +=' --masters %s'% (n_sub_masters+1)
@@ -137,7 +138,7 @@ export CRAY_CUDA_MPS=1
 
 export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK                                                                                           
 
-cd /scratch/snx3000/vlimant/mpi_learn                                                                                                 
+cd %s
 
 export KERAS_BACKEND=theano                                                                                                           
 
@@ -148,7 +149,7 @@ module load pycuda/2016.1.2-CrayGNU-2016.11-Python-3.5.2-cuda-8.0.54
 source /users/vlimant/simple/bin/activate                                                                                             
 
 srun -n $SLURM_NTASKS --ntasks-per-node=$SLURM_NTASKS_PER_NODE -c $SLURM_CPUS_PER_TASK %s                                             
-"""%( nn, command ))
+"""%( nn, pwd, command ))
         elif sm:
             open(script,"w").write("""#!/bin/bash
 mpirun -n %s %s

@@ -10,5 +10,6 @@ git clone git@github.com:vlimant/mpi-learn-benchmark.git
 git clone git@github.com:duanders/mpi_learn.git
 cd mpi_learn
 ln -s ../mpi-learn-benchmark/shoot.py
+ln -s ../mpi-learn-benchmark/dannynet_arch.json
 python shoot.py --help
 ```

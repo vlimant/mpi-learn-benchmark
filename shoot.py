@@ -38,8 +38,8 @@ for f in os.popen('ls %s*/*/*.h5'%dataloc).read().split('\n'):
     else:
         train.append(f)
 
-print len(test),"files for testing"
-print len(train),"files for training"
+print (len(test),"files for testing")
+print (len(train),"files for training")
 
 open('train_dustin.list','w').write('\n'.join(train))
 open('test_dustin.list','w').write('\n'.join(test))
@@ -66,6 +66,7 @@ if options.worker: ws = map(int, options.worker.split(','))
 #es = [10]
 
 tests = list(itertools.product(ws,bs,es,fv))
+print ("%s tests to run"% len (tests))
 random.shuffle(tests)
 
 sub_masters = options.sub_masters
@@ -86,7 +87,7 @@ for nw,ba,ep,v in tests:
         nn += n_sub_masters
 
     if sm and nn > 20:
-        print "too many nodes"
+        print ("too many nodes on supermicro")
         break
 
     if sub_masters and not n_sub_masters: continue ## no need for this
@@ -97,7 +98,7 @@ for nw,ba,ep,v in tests:
     elif v <1: 
         label+='_val%s'%v
         if nn == 1:
-            print "no workers and fractional validation is not relevant. not running"
+            print ("no workers and fractional validation is not relevant. not running")
             continue
 
     if n_sub_masters: label+='_sub%d'%(n_sub_masters)## that was probably a bad convention
@@ -108,23 +109,25 @@ for nw,ba,ep,v in tests:
     log_out = 'train_%s.log'%label
 
     if os.path.isfile(script):
-        print "\t\t",label,"already processed"
+        print ("\t\t "+label+" already processed")
     else:
-        print "Starting",label
-        command = './MPIDriver.py dannynet_arch.json train_dustin.list test_dustin.list --features-name X --labels-name Y --epochs %d --loss categorical_crossentropy --batch %d --trial-name %s --master-gpu'%( ep, ba, label)
+        print ("Starting "+label)
+        mod_arg = 'dannynet_arch.json'
+        if cooley: mod_arg = 'dannynet' ## different version of mpi learn
+        command = './MPIDriver.py %s train_dustin.list test_dustin.list --features-name X --labels-name Y --epochs %d --loss categorical_crossentropy --batch %d --trial-name %s --master-gpu'%( mod_arg, ep, ba, label)
         if v!=1: command+=' --validate-fraction-every %s'% v #command+=' --validate-every 0 '
         if nn == 1: command += ' --master-only '
         if n_sub_masters: command +=' --masters %s'% (n_sub_masters+1)
         if cpu : command += ' --max-gpus 0 ' ## disable gpu
-        print command
+        print (command)
 
         if cooley:
             open(script,"w").write("""#!/bin/sh
 NODES=`cat $COBALT_NODEFILE | wc -l`
 PROCS=$((NODES * 1))
-cd /home/vlimant/mpi_learn_2/
+cd %s
 mpirun -f $COBALT_NODEFILE -n $PROCS %s 
-"""%( command ))
+"""%( pwd, command ))
         elif daint:
             open(script,"w").write("""#!/bin/bash -l 
 #SBATCH --nodes=%s
@@ -158,7 +161,29 @@ mpirun -n %s %s
         os.system('chmod 755 %s'%script)
         timeout = 480 if nn<=2 else 240
         if cooley:
-            os.system( 'qsub -n %d -t %d -A CMSHPCProd %s'%( nn, timeout, script ))
+            sub_command = 'qsub -n %d -t %d -A CMSHPCProd %s'%( nn, timeout, script )
+            def cooley_sub( com , retry=True, timeout=60):
+                jobid = False
+                while True:
+                    sub = os.popen( com ).read()
+                    print ("submission command says")
+                    print sub
+                    try:
+                        jobid = int(sub.split('\n')[0])
+                        break
+                    except:
+                        if not retry: 
+                            jobid = False
+                            break
+                        else:
+                            print ("failed to submit once. trying in %s [s]"% timeout)
+                            time.sleep(timeout)
+                return jobid
+            retry = True
+            if cooley_sub( sub_command , retry=retry)==False:
+                print ("Failure in submission")
+                break
+                
         elif daint:
             os.system( 'sbatch --time %d  %s'%( timeout, script ))
         elif sm:

@@ -7,6 +7,7 @@ import argparse
 import socket
 parser = argparse.ArgumentParser()
 parser.add_argument('--cpu',action='store_true')
+parser.add_argument('--resubmit',action='store_true')
 parser.add_argument('--sub_masters',type=int, default=0)
 parser.add_argument('--max_round', type=int, default=-1)
 parser.add_argument('--validate',default=None)
@@ -14,6 +15,7 @@ parser.add_argument('--epoch', default=None)
 parser.add_argument('--batch', default=None)
 parser.add_argument('--worker', default=None)
 parser.add_argument('--extra',default='')
+parser.add_argument('--early',type=int, default=0)
 options = parser.parse_args()
 
 test=[]
@@ -103,22 +105,25 @@ for nw,ba,ep,v in tests:
 
     if n_sub_masters: label+='_sub%d'%(n_sub_masters)## that was probably a bad convention
     if cpu : label +='_cpu'
+    if options.early: label +='_ea%d'%options.early
 
     script = 'dannynet_%s.sh'%label
-    json_out = 'dannynet_%s_history.json'%label
-    log_out = 'train_%s.log'%label
-
-    if os.path.isfile(script):
+    json_out = 'dannynet_arch_%s_history.json'%label
+    #log_out = 'train_%s.log'%label
+    
+    check_presence_of = json_out if options.resubmit else script
+    if os.path.isfile(check_presence_of):
         print ("\t\t "+label+" already processed")
     else:
         print ("Starting "+label)
         mod_arg = 'dannynet_arch.json'
-        if cooley: mod_arg = 'dannynet' ## different version of mpi learn
+        ####not anymore here if cooley: mod_arg = 'dannynet' ## different version of mpi learn
         command = './MPIDriver.py %s train_dustin.list test_dustin.list --features-name X --labels-name Y --epochs %d --loss categorical_crossentropy --batch %d --trial-name %s --master-gpu'%( mod_arg, ep, ba, label)
         if v!=1: command+=' --validate-fraction-every %s'% v #command+=' --validate-every 0 '
         if nn == 1: command += ' --master-only '
         if n_sub_masters: command +=' --masters %s'% (n_sub_masters+1)
         if cpu : command += ' --max-gpus 0 ' ## disable gpu
+        if options.early: command +=' --early-stopping %d '%options.early
         print (command)
 
         if cooley:
@@ -160,6 +165,9 @@ mpirun -n %s %s
 
         os.system('chmod 755 %s'%script)
         timeout = 480 if nn<=2 else 240
+        if options.early: 
+            timeout = timeout * 4
+        timeout = min(timeout, 12*60)
         if cooley:
             sub_command = 'qsub -n %d -t %d -A CMSHPCProd %s'%( nn, timeout, script )
             def cooley_sub( com , retry=True, timeout=60):
